@@ -1,7 +1,6 @@
 const express = require('express');
 const path = require('path');
-const swaggerUi = require('swagger-ui-express');
-const fs = require('fs');
+const setupSwagger = require('./swagger');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
@@ -31,8 +30,8 @@ function authenticateToken(req, res, next) {
     });
 }
 
-const swaggerDocument = JSON.parse(fs.readFileSync(path.join(__dirname, 'swagger.json'), 'utf8'));
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
+setupSwagger(app);
 
 let users = [];
 let recipes = [];
@@ -140,5 +139,10 @@ app.delete('/recipes/:id', authenticateToken, (req, res) => {
     res.status(204).send();
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+if (require.main === module) {
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+}
+
+module.exports = app;
