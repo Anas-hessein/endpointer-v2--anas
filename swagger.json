@@ -1,0 +1,19 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Recipe API",
+    "version": "1.0.0",
+    "description": "A simple API with Recipe CRUD"
+  },
+  "servers": [
+    { "url": "https://your-vercel-domain.vercel.app/api" }
+  ],
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "summary": "Register a new user",
+        "responses": { "200": { "description": "User registered" } }
+      }
+    }
+  }
+}

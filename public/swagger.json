@@ -1,0 +1,52 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Recipe API",
+    "version": "1.0.0",
+    "description": "API for managing recipes with JWT authentication"
+  },
+  "servers": [
+    { "url": "http://localhost:3000" },
+    { "url": "https://endpointers-anas.vercel.app" }
+  ],
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "summary": "Register a new user",
+        "responses": {
+          "200": {
+            "description": "User registered"
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Login a user",
+        "responses": {
+          "200": {
+            "description": "User logged in"
+          }
+        }
+      }
+    },
+    "/recipes": {
+      "get": {
+        "summary": "Get all recipes",
+        "responses": {
+          "200": {
+            "description": "List of recipes"
+          }
+        }
+      },
+      "post": {
+        "summary": "Add a new recipe",
+        "responses": {
+          "200": {
+            "description": "Recipe added"
+          }
+        }
+      }
+    }
+  }
+}
