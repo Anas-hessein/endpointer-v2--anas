@@ -7,7 +7,7 @@
   },
   "servers": [
     { "url": "http://localhost:3000" },
-    { "url": "https://endpointers-anas.vercel.app" }
+    { "url": "https://endpointer-v2-anas.vercel.app/" }
   ],
   "paths": {
     "/auth/register": {
