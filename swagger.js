@@ -302,7 +302,7 @@ const swaggerDocument = {
 };
 
 function setupSwagger(app) {
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+  app.use('/lol', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
   app.get('/swagger.json', (req, res) => {
     res.json(swaggerDocument);
   });
