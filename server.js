@@ -1,216 +1,144 @@
-const dotenv = require("dotenv");
-const express = require("express");
-const mongoose = require("mongoose");
-const cors = require("cors");
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs");
-const swaggerJsDoc = require("swagger-jsdoc");
-const swaggerUi = require("swagger-ui-express");
-
-dotenv.config();
+const express = require('express');
+const path = require('path');
+const swaggerUi = require('swagger-ui-express');
+const fs = require('fs');
+const jwt = require('jsonwebtoken');
+require('dotenv').config();
 
 const app = express();
-app.use(cors());
 app.use(express.json());
 
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log("✅ Connected to MongoDB Atlas"))
-    .catch(err => console.error("❌ MongoDB connection error:", err));
+const secret = process.env.JWT_SECRET || 'your-secret-key';
 
-const recipeSchema = new mongoose.Schema({
-    title: String,
-    ingredients: [String],
-    instructions: String
-});
-const Recipe = mongoose.model("Recipe", recipeSchema);
+function generateToken(payload) {
+    return jwt.sign(payload, secret, { expiresIn: '1h' });
+}
 
-const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers["authorization"];
-    const token = authHeader && authHeader.split(" ")[1];
-    if (!token) return res.sendStatus(401);
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+        return res.status(401).json({ error: 'No token provided' });
+    }
 
-    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-        if (err) return res.sendStatus(403);
+    jwt.verify(token, secret, (err, user) => {
+        if (err) {
+            return res.status(403).json({ error: 'Invalid token' });
+        }
         req.user = user;
         next();
     });
-};
+}
 
-/**
- * @swagger
- * /register:
- *   post:
- *     summary: Register a new user
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               username:
- *                 type: string
- *               password:
- *                 type: string
- *     responses:
- *       200:
- *         description: User registered successfully
- */
-app.post("/register", async (req, res) => {
+const swaggerDocument = JSON.parse(fs.readFileSync(path.join(__dirname, 'swagger.json'), 'utf8'));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
+let users = [];
+let recipes = [];
+
+
+app.post('/auth/register', (req, res) => {
     const { username, password } = req.body;
-    const hashedPassword = await bcrypt.hash(password, 10);
-    res.json({ message: `User ${username} registered!` });
+    if (users.find(u => u.username === username)) {
+        return res.status(400).json({ error: 'Username already exists' });
+    }
+    users.push({ username, password });
+    const token = generateToken({ username });
+    res.status(201).json({ token });
 });
 
-/**
- * @swagger
- * /login:
- *   post:
- *     summary: Login and get JWT token
- *     tags: [Auth]
- *     responses:
- *       200:
- *         description: Returns a JWT token
- */
-app.post("/login", (req, res) => {
-    const { username } = req.body;
-    const user = { name: username };
-    const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: "1h" });
+
+app.post('/auth/login', (req, res) => {
+    const { username, password } = req.body;
+    const user = users.find(u => u.username === username && u.password === password);
+    if (!user) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    const token = generateToken({ username });
     res.json({ token });
 });
 
-/**
- * @swagger
- * /protected:
- *   get:
- *     summary: Access a protected route
- *     tags: [Auth]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Protected route accessed
- */
-app.get("/protected", authenticateToken, (req, res) => {
-    res.json({ message: "Welcome to the protected route!", user: req.user });
+
+
+app.post('/recipes', authenticateToken, (req, res) => {
+    const { title, ingredients, instructions } = req.body;
+    const newRecipe = {
+        id: Date.now().toString(),
+        title,
+        ingredients,
+        instructions,
+        createdBy: req.user.username
+    };
+    recipes.push(newRecipe);
+    res.status(201).json(newRecipe);
 });
 
-/**
- * @swagger
- * /recipes:
- *   post:
- *     summary: Add a new recipe
- *     tags: [Recipes]
- *     responses:
- *       200:
- *         description: Recipe added successfully
- */
-app.post("/recipes", async (req, res) => {
-    const recipe = new Recipe(req.body);
-    await recipe.save();
-    res.json({ message: "Recipe added!" });
+
+app.post('/recipes/:id/reviews', authenticateToken, (req, res) => {
+    const { rating, comment } = req.body;
+    const recipe = recipes.find(r => r.id === req.params.id);
+    if (!recipe) {
+        return res.status(404).json({ error: 'Recipe not found' });
+    }
+    if (!recipe.reviews) recipe.reviews = [];
+    recipe.reviews.push({
+        id: Date.now().toString(),
+        rating,
+        comment,
+        user: req.user.username
+    });
+    res.status(201).json({ message: 'Review added successfully' });
 });
 
-/**
- * @swagger
- * /recipes:
- *   get:
- *     summary: Get all recipes
- *     tags: [Recipes]
- *     responses:
- *       200:
- *         description: List of all recipes
- */
-app.get("/recipes", async (req, res) => {
-    const recipes = await Recipe.find();
+
+app.get('/recipes', (req, res) => {
     res.json(recipes);
 });
 
-/**
- * @swagger
- * /recipes/{id}:
- *   get:
- *     summary: Get recipe by ID
- *     tags: [Recipes]
- *     parameters:
- *       - in: path
- *         name: id
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Recipe found
- */
-app.get("/recipes/:id", async (req, res) => {
-    const recipe = await Recipe.findById(req.params.id);
+
+app.get('/recipes/:id', (req, res) => {
+    const recipe = recipes.find(r => r.id === req.params.id);
+    if (!recipe) {
+        return res.status(404).json({ error: 'Recipe not found' });
+    }
     res.json(recipe);
 });
 
-/**
- * @swagger
- * /recipes/{id}:
- *   put:
- *     summary: Update recipe by ID
- *     tags: [Recipes]
- *     parameters:
- *       - in: path
- *         name: id
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Recipe updated
- */
-app.put("/recipes/:id", async (req, res) => {
-    await Recipe.findByIdAndUpdate(req.params.id, req.body);
-    res.json({ message: "Recipe updated!" });
+
+app.get('/recipes/:id/reviews', (req, res) => {
+    const recipe = recipes.find(r => r.id === req.params.id);
+    if (!recipe) {
+        return res.status(404).json({ error: 'Recipe not found' });
+    }
+    res.json(recipe.reviews || []);
 });
 
-/**
- * @swagger
- * /recipes/{id}:
- *   delete:
- *     summary: Delete recipe by ID
- *     tags: [Recipes]
- *     parameters:
- *       - in: path
- *         name: id
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Recipe deleted
- */
-app.delete("/recipes/:id", async (req, res) => {
-    await Recipe.findByIdAndDelete(req.params.id);
-    res.json({ message: "Recipe deleted!" });
+
+app.put('/recipes/:id', authenticateToken, (req, res) => {
+    const index = recipes.findIndex(r => r.id === req.params.id);
+    if (index === -1) {
+        return res.status(404).json({ error: 'Recipe not found' });
+    }
+    if (recipes[index].createdBy !== req.user.username) {
+        return res.status(403).json({ error: 'Not authorized to update this recipe' });
+    }
+    recipes[index] = { ...recipes[index], ...req.body, id: req.params.id };
+    res.json(recipes[index]);
 });
 
-const swaggerOptions = {
-    definition: {
-        openapi: "3.0.0",
-        info: {
-            title: "Recipe API",
-            version: "1.0.0",
-            description: "API for managing recipes with JWT authentication",
-        },
-        servers: [{ url: "http://localhost:3000" }],
-        components: {
-            securitySchemes: {
-                bearerAuth: {
-                    type: "http",
-                    scheme: "bearer",
-                    bearerFormat: "JWT",    
-                },
-            },
-        },
-    },
-    apis: ["/server.js"],
-};
 
-const swaggerDocs = swaggerJsDoc(swaggerOptions);
-app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+app.delete('/recipes/:id', authenticateToken, (req, res) => {
+    const index = recipes.findIndex(r => r.id === req.params.id);
+    if (index === -1) {
+        return res.status(404).json({ error: 'Recipe not found' });
+    }
+    if (recipes[index].createdBy !== req.user.username) {
+        return res.status(403).json({ error: 'Not authorized to delete this recipe' });
+    }
+    recipes.splice(index, 1);
+    res.status(204).send();
+});
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
