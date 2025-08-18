@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "http://localhost:3000",
+      "url": "endpointer-v2-anas.vercel.app",
       "description": "Local development server"
     }
   ],
