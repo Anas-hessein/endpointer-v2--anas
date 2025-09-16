@@ -6,17 +6,17 @@
   "main": "api/index.js",
   "scripts": {
     "dev": "node api/index.js",
-    "start": "node api/index.js",
-    "build": "echo \"Nothing to build\""
+    "build": "echo 'No build step required'",
+    "start": "node api/index.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.17.1",
-    "swagger-ui-dist": "^5.17.14"
+    "mongoose": "^8.17.1"
   },
   "engines": {
     "node": ">=18.0.0"
   }
 }
+  
