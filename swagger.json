@@ -1,0 +1,21 @@
+{
+  "name": "recipe-api-serverless",
+  "version": "1.0.0",
+  "description": "Recipe API optimized for Vercel serverless",
+  "type": "module",
+  "main": "api/index.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'No build step required'",
+    "start": "vercel dev"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.17.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

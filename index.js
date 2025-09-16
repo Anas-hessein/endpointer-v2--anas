@@ -1,529 +1,322 @@
-const express = require("express");
-const mongoose = require("mongoose");
-const cors = require("cors");
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs");
-const swaggerJsDoc = require("swagger-jsdoc");
-const swaggerUi = require("swagger-ui-express");
+// api/index.js - Main API handler for Vercel
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import cors from 'cors';
 
-const app = express();
+// Initialize CORS
+const corsOptions = {
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-
-// Global connection promise
+// Global connection cache
 let cachedConnection = null;
 
-// MongoDB Connection with caching for serverless
+// Connect to MongoDB with caching
 async function connectToDatabase() {
-    if (cachedConnection) {
-        return cachedConnection;
+  if (cachedConnection && mongoose.connection.readyState === 1) {
+    return cachedConnection;
+  }
+
+  try {
+    if (!process.env.MONGO_URI) {
+      throw new Error('MONGO_URI is not defined');
     }
 
-    try {
-        if (!process.env.MONGO_URI) {
-            throw new Error('MONGO_URI environment variable is not defined');
-        }
+    const connection = await mongoose.connect(process.env.MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      maxPoolSize: 1,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
 
-        if (!process.env.JWT_SECRET) {
-            throw new Error('JWT_SECRET environment variable is not defined');
-        }
-
-        const connection = await mongoose.connect(process.env.MONGO_URI, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
-            bufferCommands: false,
-            maxPoolSize: 1,
-        });
-
-        cachedConnection = connection;
-        console.log("✅ Connected to MongoDB Atlas");
-        return connection;
-    } catch (error) {
-        console.error("❌ MongoDB connection error:", error.message);
-        throw error;
-    }
+    cachedConnection = connection;
+    return connection;
+  } catch (error) {
+    console.error('Database connection error:', error);
+    throw error;
+  }
 }
 
 // User Schema
-const userSchema = new mongoose.Schema({
-    username: { type: String, required: true, unique: true },
-    password: { type: String, required: true }
+const UserSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true },
+  password: { type: String, required: true }
 });
 
 // Recipe Schema
-const recipeSchema = new mongoose.Schema({
-    title: { type: String, required: true },
-    ingredients: [String],
-    instructions: { type: String, required: true },
-    cookingTime: Number,
-    servings: Number,
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    createdAt: { type: Date, default: Date.now }
+const RecipeSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  ingredients: [String],
+  instructions: { type: String, required: true },
+  cookingTime: Number,
+  servings: Number,
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  createdAt: { type: Date, default: Date.now }
 });
 
-// Models (only create if they don't exist)
-const User = mongoose.models.User || mongoose.model("User", userSchema);
-const Recipe = mongoose.models.Recipe || mongoose.model("Recipe", recipeSchema);
+// Models
+const User = mongoose.models.User || mongoose.model('User', UserSchema);
+const Recipe = mongoose.models.Recipe || mongoose.model('Recipe', RecipeSchema);
 
-// Authentication Middleware
-const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers["authorization"];
-    const token = authHeader && authHeader.split(" ")[1];
-    
-    if (!token) {
-        return res.status(401).json({ error: "Access token required" });
+// Auth middleware
+const authenticateToken = (req) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (!token) {
+    throw new Error('Access token required');
+  }
+
+  try {
+    const user = jwt.verify(token, process.env.JWT_SECRET);
+    return user;
+  } catch (error) {
+    throw new Error('Invalid token');
+  }
+};
+
+// CORS middleware
+function runCors(req, res) {
+  return new Promise((resolve, reject) => {
+    const corsMiddleware = cors(corsOptions);
+    corsMiddleware(req, res, (result) => {
+      if (result instanceof Error) {
+        return reject(result);
+      }
+      return resolve(result);
+    });
+  });
+}
+
+// Main handler
+export default async function handler(req, res) {
+  try {
+    // Handle CORS
+    await runCors(req, res);
+
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
     }
 
-    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-        if (err) {
-            return res.status(403).json({ error: "Invalid token" });
+    const { method, url } = req;
+    const urlPath = new URL(url, `http://${req.headers.host}`).pathname;
+
+    console.log(`${method} ${urlPath}`);
+
+    // Root endpoint
+    if (method === 'GET' && urlPath === '/') {
+      return res.status(200).json({
+        message: '🍳 Welcome to Recipe API',
+        endpoints: {
+          health: 'GET /api/health',
+          register: 'POST /api/auth/register',
+          login: 'POST /api/auth/login',
+          recipes: 'GET /api/recipes',
+          createRecipe: 'POST /api/recipes'
         }
-        req.user = user;
-        next();
-    });
-};
+      });
+    }
 
-// Swagger Configuration
-const swaggerOptions = {
-    definition: {
-        openapi: "3.0.0",
-        info: {
-            title: "Recipe API",
-            version: "1.0.0",
-            description: "A comprehensive API for managing recipes with JWT authentication",
-        },
-        servers: [
-            {
-                url: "https://endpointers-anas.vercel.app",
-                description: "Production server"
-            },
-            {
-                url: "http://localhost:3000",
-                description: "Development server"
-            }
-        ],
-        components: {
-            securitySchemes: {
-                bearerAuth: {
-                    type: "http",
-                    scheme: "bearer",
-                    bearerFormat: "JWT",
-                }
-            },
-            schemas: {
-                User: {
-                    type: "object",
-                    required: ["username", "password"],
-                    properties: {
-                        username: { type: "string", example: "johndoe" },
-                        password: { type: "string", example: "password123" }
-                    }
-                },
-                Recipe: {
-                    type: "object",
-                    required: ["title", "instructions"],
-                    properties: {
-                        title: { type: "string", example: "Chocolate Chip Cookies" },
-                        ingredients: { 
-                            type: "array", 
-                            items: { type: "string" },
-                            example: ["2 cups flour", "1 cup sugar", "1/2 cup butter"]
-                        },
-                        instructions: { type: "string", example: "Mix and bake at 350°F" },
-                        cookingTime: { type: "number", example: 30 },
-                        servings: { type: "number", example: 4 }
-                    }
-                }
-            }
-        },
-        tags: [
-            { name: "Authentication", description: "User authentication endpoints" },
-            { name: "Recipes", description: "Recipe management endpoints" }
-        ]
-    },
-    apis: [__filename]
-};
-
-const swaggerDocs = swaggerJsDoc(swaggerOptions);
-
-// Serve Swagger UI
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
-
-// Health check
-app.get("/health", (req, res) => {
-    res.json({
-        status: "OK",
+    // Health check
+    if (method === 'GET' && urlPath === '/api/health') {
+      return res.status(200).json({
+        status: 'OK',
         timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV || 'development'
+        mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+      });
+    }
+
+    // Connect to database for all other routes
+    await connectToDatabase();
+
+    // Register endpoint
+    if (method === 'POST' && urlPath === '/api/auth/register') {
+      const { username, password } = req.body;
+
+      if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+      }
+
+      if (password.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      }
+
+      const existingUser = await User.findOne({ username });
+      if (existingUser) {
+        return res.status(400).json({ error: 'Username already exists' });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 12);
+      const user = new User({ username, password: hashedPassword });
+      await user.save();
+
+      return res.status(201).json({
+        message: 'User registered successfully',
+        userId: user._id
+      });
+    }
+
+    // Login endpoint
+    if (method === 'POST' && urlPath === '/api/auth/login') {
+      const { username, password } = req.body;
+
+      if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+      }
+
+      const user = await User.findOne({ username });
+      if (!user || !(await bcrypt.compare(password, user.password))) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      const token = jwt.sign(
+        { userId: user._id, username: user.username },
+        process.env.JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+
+      return res.status(200).json({
+        token,
+        message: 'Login successful',
+        user: { id: user._id, username: user.username }
+      });
+    }
+
+    // Get all recipes
+    if (method === 'GET' && urlPath === '/api/recipes') {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const skip = (page - 1) * limit;
+
+      const total = await Recipe.countDocuments();
+      const recipes = await Recipe.find()
+        .populate('createdBy', 'username')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit);
+
+      return res.status(200).json({
+        recipes,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      });
+    }
+
+    // Create recipe
+    if (method === 'POST' && urlPath === '/api/recipes') {
+      const user = authenticateToken(req);
+      const { title, ingredients, instructions, cookingTime, servings } = req.body;
+
+      if (!title || !instructions) {
+        return res.status(400).json({ error: 'Title and instructions are required' });
+      }
+
+      const recipe = new Recipe({
+        title,
+        ingredients: ingredients || [],
+        instructions,
+        cookingTime,
+        servings,
+        createdBy: user.userId
+      });
+
+      await recipe.save();
+
+      return res.status(201).json({
+        message: 'Recipe created successfully',
+        recipe
+      });
+    }
+
+    // Get recipe by ID
+    if (method === 'GET' && urlPath.startsWith('/api/recipes/')) {
+      const id = urlPath.split('/')[3];
+      
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ error: 'Invalid recipe ID' });
+      }
+
+      const recipe = await Recipe.findById(id).populate('createdBy', 'username');
+      if (!recipe) {
+        return res.status(404).json({ error: 'Recipe not found' });
+      }
+
+      return res.status(200).json(recipe);
+    }
+
+    // Update recipe
+    if (method === 'PUT' && urlPath.startsWith('/api/recipes/')) {
+      const user = authenticateToken(req);
+      const id = urlPath.split('/')[3];
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ error: 'Invalid recipe ID' });
+      }
+
+      const recipe = await Recipe.findById(id);
+      if (!recipe) {
+        return res.status(404).json({ error: 'Recipe not found' });
+      }
+
+      if (recipe.createdBy.toString() !== user.userId) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+
+      const updatedRecipe = await Recipe.findByIdAndUpdate(id, req.body, { new: true });
+      
+      return res.status(200).json({
+        message: 'Recipe updated successfully',
+        recipe: updatedRecipe
+      });
+    }
+
+    // Delete recipe
+    if (method === 'DELETE' && urlPath.startsWith('/api/recipes/')) {
+      const user = authenticateToken(req);
+      const id = urlPath.split('/')[3];
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ error: 'Invalid recipe ID' });
+      }
+
+      const recipe = await Recipe.findById(id);
+      if (!recipe) {
+        return res.status(404).json({ error: 'Recipe not found' });
+      }
+
+      if (recipe.createdBy.toString() !== user.userId) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+
+      await Recipe.findByIdAndDelete(id);
+      
+      return res.status(200).json({
+        message: 'Recipe deleted successfully'
+      });
+    }
+
+    // Route not found
+    return res.status(404).json({ error: 'Route not found' });
+
+  } catch (error) {
+    console.error('API Error:', error);
+    
+    if (error.message === 'Access token required' || error.message === 'Invalid token') {
+      return res.status(401).json({ error: error.message });
+    }
+
+    return res.status(500).json({ 
+      error: 'Internal server error',
+      message: error.message 
     });
-});
-
-// Root endpoint
-app.get("/", (req, res) => {
-    res.json({
-        message: "🍳 Welcome to Recipe API",
-        documentation: "/api-docs",
-        health: "/health",
-        version: "1.0.0"
-    });
-});
-
-/**
- * @swagger
- * /auth/register:
- *   post:
- *     summary: Register a new user
- *     tags: [Authentication]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/User'
- *     responses:
- *       201:
- *         description: User registered successfully
- *       400:
- *         description: Invalid input or user already exists
- */
-app.post("/auth/register", async (req, res) => {
-    try {
-        await connectToDatabase();
-        
-        const { username, password } = req.body;
-
-        if (!username || !password) {
-            return res.status(400).json({ error: "Username and password are required" });
-        }
-
-        if (password.length < 6) {
-            return res.status(400).json({ error: "Password must be at least 6 characters long" });
-        }
-
-        const existingUser = await User.findOne({ username });
-        if (existingUser) {
-            return res.status(400).json({ error: "Username already exists" });
-        }
-
-        const hashedPassword = await bcrypt.hash(password, 12);
-        const user = new User({ username, password: hashedPassword });
-        await user.save();
-
-        res.status(201).json({ 
-            message: "User registered successfully", 
-            userId: user._id 
-        });
-    } catch (error) {
-        console.error("Registration error:", error);
-        res.status(500).json({ error: "Internal server error" });
-    }
-});
-
-/**
- * @swagger
- * /auth/login:
- *   post:
- *     summary: Login and get JWT token
- *     tags: [Authentication]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/User'
- *     responses:
- *       200:
- *         description: Login successful
- *       401:
- *         description: Invalid credentials
- */
-app.post("/auth/login", async (req, res) => {
-    try {
-        await connectToDatabase();
-        
-        const { username, password } = req.body;
-
-        if (!username || !password) {
-            return res.status(400).json({ error: "Username and password are required" });
-        }
-
-        const user = await User.findOne({ username });
-        if (!user) {
-            return res.status(401).json({ error: "Invalid credentials" });
-        }
-
-        const isValidPassword = await bcrypt.compare(password, user.password);
-        if (!isValidPassword) {
-            return res.status(401).json({ error: "Invalid credentials" });
-        }
-
-        const token = jwt.sign(
-            { userId: user._id, username: user.username }, 
-            process.env.JWT_SECRET, 
-            { expiresIn: "24h" }
-        );
-
-        res.json({ 
-            token, 
-            message: "Login successful",
-            user: { id: user._id, username: user.username }
-        });
-    } catch (error) {
-        console.error("Login error:", error);
-        res.status(500).json({ error: "Internal server error" });
-    }
-});
-
-/**
- * @swagger
- * /recipes:
- *   post:
- *     summary: Add a new recipe
- *     tags: [Recipes]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/Recipe'
- *     responses:
- *       201:
- *         description: Recipe created successfully
- *       401:
- *         description: Authentication required
- */
-app.post("/recipes", authenticateToken, async (req, res) => {
-    try {
-        await connectToDatabase();
-        
-        const { title, ingredients, instructions, cookingTime, servings } = req.body;
-
-        if (!title || !instructions) {
-            return res.status(400).json({ error: "Title and instructions are required" });
-        }
-
-        const recipe = new Recipe({
-            title,
-            ingredients: ingredients || [],
-            instructions,
-            cookingTime,
-            servings,
-            createdBy: req.user.userId
-        });
-
-        await recipe.save();
-        res.status(201).json({ 
-            message: "Recipe created successfully", 
-            recipe 
-        });
-    } catch (error) {
-        console.error("Create recipe error:", error);
-        res.status(500).json({ error: "Internal server error" });
-    }
-});
-
-/**
- * @swagger
- * /recipes:
- *   get:
- *     summary: Get all recipes
- *     tags: [Recipes]
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           default: 1
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 10
- *     responses:
- *       200:
- *         description: List of recipes
- */
-app.get("/recipes", async (req, res) => {
-    try {
-        await connectToDatabase();
-        
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-        const skip = (page - 1) * limit;
-
-        const total = await Recipe.countDocuments();
-        const recipes = await Recipe.find()
-            .populate('createdBy', 'username')
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limit);
-
-        res.json({
-            recipes,
-            pagination: { page, limit, total, pages: Math.ceil(total / limit) }
-        });
-    } catch (error) {
-        console.error("Get recipes error:", error);
-        res.status(500).json({ error: "Internal server error" });
-    }
-});
-
-/**
- * @swagger
- * /recipes/{id}:
- *   get:
- *     summary: Get recipe by ID
- *     tags: [Recipes]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Recipe found
- *       404:
- *         description: Recipe not found
- */
-app.get("/recipes/:id", async (req, res) => {
-    try {
-        await connectToDatabase();
-        
-        const recipe = await Recipe.findById(req.params.id).populate('createdBy', 'username');
-        if (!recipe) {
-            return res.status(404).json({ error: "Recipe not found" });
-        }
-        res.json(recipe);
-    } catch (error) {
-        if (error.name === 'CastError') {
-            return res.status(400).json({ error: "Invalid recipe ID" });
-        }
-        console.error("Get recipe error:", error);
-        res.status(500).json({ error: "Internal server error" });
-    }
-});
-
-/**
- * @swagger
- * /recipes/{id}:
- *   put:
- *     summary: Update recipe by ID
- *     tags: [Recipes]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/Recipe'
- *     responses:
- *       200:
- *         description: Recipe updated
- *       403:
- *         description: Not authorized
- *       404:
- *         description: Recipe not found
- */
-app.put("/recipes/:id", authenticateToken, async (req, res) => {
-    try {
-        await connectToDatabase();
-        
-        const recipe = await Recipe.findById(req.params.id);
-        if (!recipe) {
-            return res.status(404).json({ error: "Recipe not found" });
-        }
-
-        if (recipe.createdBy.toString() !== req.user.userId) {
-            return res.status(403).json({ error: "Not authorized to update this recipe" });
-        }
-
-        const updatedRecipe = await Recipe.findByIdAndUpdate(
-            req.params.id, 
-            req.body, 
-            { new: true }
-        );
-        
-        res.json({ 
-            message: "Recipe updated successfully", 
-            recipe: updatedRecipe 
-        });
-    } catch (error) {
-        if (error.name === 'CastError') {
-            return res.status(400).json({ error: "Invalid recipe ID" });
-        }
-        console.error("Update recipe error:", error);
-        res.status(500).json({ error: "Internal server error" });
-    }
-});
-
-/**
- * @swagger
- * /recipes/{id}:
- *   delete:
- *     summary: Delete recipe by ID
- *     tags: [Recipes]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Recipe deleted
- *       403:
- *         description: Not authorized
- *       404:
- *         description: Recipe not found
- */
-app.delete("/recipes/:id", authenticateToken, async (req, res) => {
-    try {
-        await connectToDatabase();
-        
-        const recipe = await Recipe.findById(req.params.id);
-        if (!recipe) {
-            return res.status(404).json({ error: "Recipe not found" });
-        }
-
-        if (recipe.createdBy.toString() !== req.user.userId) {
-            return res.status(403).json({ error: "Not authorized to delete this recipe" });
-        }
-
-        await Recipe.findByIdAndDelete(req.params.id);
-        res.json({ message: "Recipe deleted successfully" });
-    } catch (error) {
-        if (error.name === 'CastError') {
-            return res.status(400).json({ error: "Invalid recipe ID" });
-        }
-        console.error("Delete recipe error:", error);
-        res.status(500).json({ error: "Internal server error" });
-    }
-});
-
-// Error handler
-app.use((error, req, res, next) => {
-    console.error("Unhandled error:", error);
-    res.status(500).json({ error: "Something went wrong!" });
-});
-
-// 404 handler
-app.use("*", (req, res) => {
-    res.status(404).json({ error: "Route not found" });
-});
-
-// Export for Vercel
-module.exports = app;
+  }
+}
