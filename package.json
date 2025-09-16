@@ -1,39 +1,21 @@
 {
-  "name": "recipe-api",
+  "name": "recipe-api-serverless",
   "version": "1.0.0",
-  "description": "A comprehensive Recipe API with JWT authentication and Swagger documentation",
-  "main": "index.js",
+  "description": "Recipe API optimized for Vercel serverless",
+  "type": "module",
+  "main": "api/index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vercel dev",
+    "build": "echo 'No build step required'",
+    "start": "vercel dev"
   },
-  "keywords": [
-    "recipe",
-    "api",
-    "express",
-    "mongodb",
-    "jwt",
-    "swagger",
-    "nodejs"
-  ],
-  "author": "Anas",
-  "license": "MIT",
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
-    "dotenv": "^17.2.1",
-    "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
-    "mongodb": "^6.19.0",
-    "mongoose": "^8.17.1",
-    "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
+    "mongoose": "^8.17.1"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=18.0.0"
   }
 }
