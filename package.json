@@ -5,9 +5,9 @@
   "type": "module",
   "main": "api/index.js",
   "scripts": {
-    "dev": "vercel dev",
+    "dev": "node api/index.js",
     "build": "echo 'No build step required'",
-    "start": "vercel dev"
+    "start": "node api/index.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
@@ -19,3 +19,4 @@
     "node": ">=18.0.0"
   }
 }
+  
