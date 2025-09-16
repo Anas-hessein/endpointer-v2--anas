@@ -1,1 +1,0 @@
-(self.webpackChunk_N_E=self.webpackChunk_N_E||[]).push([[904],{19961:(_,n,s)=>{"use strict";s.r(n),s.d(n,{default:()=>r});var u=s(37876),e=s(56523);function r(){return(0,u.jsx)(e.A,{url:"/swagger.json"})}s(54261)},80052:(_,n,s)=>{(window.__NEXT_P=window.__NEXT_P||[]).push(["/api-docs",function(){return s(19961)}])}},_=>{_.O(0,[184,32,636,593,792],()=>_(_.s=80052)),_N_E=_.O()}]);
