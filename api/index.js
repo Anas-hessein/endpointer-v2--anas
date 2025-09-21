@@ -6,8 +6,8 @@ import cors from 'cors';
 
 
 const corsOptions = {
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  origin: 'https://endpointer-v2-anas.vercel.app',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 };
 
@@ -93,7 +93,7 @@ function runCors(req, res) {
 
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', 'https://endpointer-v2-anas.vercel.app');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
@@ -125,7 +125,7 @@ export default async function handler(req, res) {
     const { method, url } = req;
     const urlPath = new URL(url, `http://${req.headers.host}`).pathname;
 
-    // ...existing code for all endpoints and error handling...
+  
     if (method === 'GET' && urlPath === '/') {
       return res.status(200).json({
         message: '🍳 Welcome to Recipe API',
@@ -315,9 +315,9 @@ export default async function handler(req, res) {
     return res.status(404).json({ error: 'Route not found' });
 
   } catch (error) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Origin', 'https://endpointer-v2-anas.vercel.app');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     console.error('API Error:', error);
     
