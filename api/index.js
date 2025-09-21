@@ -1,20 +1,19 @@
-// api/index.js - Main API handler for Vercel
+
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import cors from 'cors';
 
-// Initialize CORS
+
 const corsOptions = {
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 };
 
-// Global connection cache
+
 let cachedConnection = null;
 
-// Connect to MongoDB with caching
 async function connectToDatabase() {
   if (cachedConnection && mongoose.connection.readyState === 1) {
     return cachedConnection;
@@ -41,13 +40,13 @@ async function connectToDatabase() {
   }
 }
 
-// User Schema
+
 const UserSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true }
 });
 
-// Recipe Schema
+
 const RecipeSchema = new mongoose.Schema({
   title: { type: String, required: true },
   ingredients: [String],
@@ -58,11 +57,11 @@ const RecipeSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-// Models
+
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
 const Recipe = mongoose.models.Recipe || mongoose.model('Recipe', RecipeSchema);
 
-// Auth middleware
+
 const authenticateToken = (req) => {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.split(' ')[1];
@@ -79,7 +78,7 @@ const authenticateToken = (req) => {
   }
 };
 
-// CORS middleware
+
 function runCors(req, res) {
   return new Promise((resolve, reject) => {
     const corsMiddleware = cors(corsOptions);
@@ -92,23 +91,24 @@ function runCors(req, res) {
   });
 }
 
-// Main handler
-export default async function handler(req, res) {
-  try {
-    // Handle CORS
-    await runCors(req, res);
 
-    // Handle preflight requests
-    if (req.method === 'OPTIONS') {
-      return res.status(200).end();
-    }
+export default async function handler(req, res) {
+
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+
+    return res.status(200).end();
+  }
+
+  try {
+    await runCors(req, res);
 
     const { method, url } = req;
     const urlPath = new URL(url, `http://${req.headers.host}`).pathname;
 
-    console.log(`${method} ${urlPath}`);
-
-    // Root endpoint
     if (method === 'GET' && urlPath === '/') {
       return res.status(200).json({
         message: '🍳 Welcome to Recipe API',
@@ -122,7 +122,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Health check
     if (method === 'GET' && urlPath === '/api/health') {
       return res.status(200).json({
         status: 'OK',
@@ -131,10 +130,8 @@ export default async function handler(req, res) {
       });
     }
 
-    // Connect to database for all other routes
     await connectToDatabase();
 
-    // Register endpoint
     if (method === 'POST' && urlPath === '/api/auth/register') {
       const { username, password } = req.body;
 
@@ -161,7 +158,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Login endpoint
     if (method === 'POST' && urlPath === '/api/auth/login') {
       const { username, password } = req.body;
 
@@ -187,7 +183,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Get all recipes
     if (method === 'GET' && urlPath === '/api/recipes') {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10;
@@ -211,7 +206,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Create recipe
     if (method === 'POST' && urlPath === '/api/recipes') {
       const user = authenticateToken(req);
       const { title, ingredients, instructions, cookingTime, servings } = req.body;
@@ -237,7 +231,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Get recipe by ID
     if (method === 'GET' && urlPath.startsWith('/api/recipes/')) {
       const id = urlPath.split('/')[3];
       
@@ -253,7 +246,7 @@ export default async function handler(req, res) {
       return res.status(200).json(recipe);
     }
 
-    // Update recipe
+
     if (method === 'PUT' && urlPath.startsWith('/api/recipes/')) {
       const user = authenticateToken(req);
       const id = urlPath.split('/')[3];
@@ -279,7 +272,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Delete recipe
     if (method === 'DELETE' && urlPath.startsWith('/api/recipes/')) {
       const user = authenticateToken(req);
       const id = urlPath.split('/')[3];
@@ -304,10 +296,14 @@ export default async function handler(req, res) {
       });
     }
 
-    // Route not found
     return res.status(404).json({ error: 'Route not found' });
 
   } catch (error) {
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
     console.error('API Error:', error);
     
     if (error.message === 'Access token required' || error.message === 'Invalid token') {
