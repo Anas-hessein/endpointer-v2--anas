@@ -5,8 +5,18 @@ import jwt from 'jsonwebtoken';
 import cors from 'cors';
 
 
+const allowedOrigins = [
+  'https://endpointer-v2-anas.vercel.app',
+  'https://endpointer-v2-anas-4464rzmj9-anas-hesseins-projects.vercel.app'
+];
 const corsOptions = {
-  origin: 'https://endpointer-v2-anas.vercel.app',
+  origin: function(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 };
@@ -93,9 +103,10 @@ function runCors(req, res) {
 
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', 'https://endpointer-v2-anas.vercel.app');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  const reqOrigin = req.headers.origin;
+if (allowedOrigins.includes(reqOrigin)) {
+  res.setHeader('Access-Control-Allow-Origin', reqOrigin);
+}
 
  
   if (
@@ -315,9 +326,12 @@ export default async function handler(req, res) {
     return res.status(404).json({ error: 'Route not found' });
 
   } catch (error) {
-  res.setHeader('Access-Control-Allow-Origin', 'https://endpointer-v2-anas.vercel.app');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+const reqOrigin = req.headers.origin;
+if (allowedOrigins.includes(reqOrigin)) {
+  res.setHeader('Access-Control-Allow-Origin', reqOrigin);
+}
+res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     console.error('API Error:', error);
     
