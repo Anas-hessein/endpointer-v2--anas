@@ -93,13 +93,29 @@ function runCors(req, res) {
 
 
 export default async function handler(req, res) {
-
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-  if (req.method === 'OPTIONS') {
+ 
+  if (
+    (req.method === 'POST' || req.method === 'PUT') &&
+    req.headers['content-type'] &&
+    req.headers['content-type'].includes('application/json') &&
+    typeof req.body === 'undefined'
+  ) {
+    try {
+      const buffers = [];
+      for await (const chunk of req) {
+        buffers.push(chunk);
+      }
+      req.body = JSON.parse(Buffer.concat(buffers).toString());
+    } catch (e) {
+      return res.status(400).json({ error: 'Invalid JSON' });
+    }
+  }
 
+  if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
@@ -109,6 +125,7 @@ export default async function handler(req, res) {
     const { method, url } = req;
     const urlPath = new URL(url, `http://${req.headers.host}`).pathname;
 
+    // ...existing code for all endpoints and error handling...
     if (method === 'GET' && urlPath === '/') {
       return res.status(200).json({
         message: '🍳 Welcome to Recipe API',
@@ -246,7 +263,6 @@ export default async function handler(req, res) {
       return res.status(200).json(recipe);
     }
 
-
     if (method === 'PUT' && urlPath.startsWith('/api/recipes/')) {
       const user = authenticateToken(req);
       const id = urlPath.split('/')[3];
@@ -299,7 +315,6 @@ export default async function handler(req, res) {
     return res.status(404).json({ error: 'Route not found' });
 
   } catch (error) {
-
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
