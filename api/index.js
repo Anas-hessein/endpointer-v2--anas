@@ -1,26 +1,11 @@
-
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import cors from 'cors';
-
 
 const allowedOrigins = [
   'https://endpointer-v2-anas.vercel.app',
   'https://endpointer-v2-anas-4464rzmj9-anas-hesseins-projects.vercel.app'
 ];
-const corsOptions = {
-  origin: function(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-};
-
 
 let cachedConnection = null;
 
@@ -29,33 +14,26 @@ async function connectToDatabase() {
     return cachedConnection;
   }
 
-  try {
-    if (!process.env.MONGO_URI) {
-      throw new Error('MONGO_URI is not defined');
-    }
-
-    const connection = await mongoose.connect(process.env.MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      maxPoolSize: 1,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-    });
-
-    cachedConnection = connection;
-    return connection;
-  } catch (error) {
-    console.error('Database connection error:', error);
-    throw error;
+  if (!process.env.MONGO_URI) {
+    throw new Error('MONGO_URI is not defined');
   }
-}
 
+  const connection = await mongoose.connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    maxPoolSize: 1,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+  });
+
+  cachedConnection = connection;
+  return connection;
+}
 
 const UserSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true }
 });
-
 
 const RecipeSchema = new mongoose.Schema({
   title: { type: String, required: true },
@@ -67,76 +45,57 @@ const RecipeSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
 const Recipe = mongoose.models.Recipe || mongoose.model('Recipe', RecipeSchema);
-
 
 const authenticateToken = (req) => {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.split(' ')[1];
   
-  if (!token) {
-    throw new Error('Access token required');
-  }
+  if (!token) throw new Error('Access token required');
 
   try {
-    const user = jwt.verify(token, process.env.JWT_SECRET);
-    return user;
+    return jwt.verify(token, process.env.JWT_SECRET);
   } catch (error) {
     throw new Error('Invalid token');
   }
 };
 
-
-function runCors(req, res) {
-  return new Promise((resolve, reject) => {
-    const corsMiddleware = cors(corsOptions);
-    corsMiddleware(req, res, (result) => {
-      if (result instanceof Error) {
-        return reject(result);
-      }
-      return resolve(result);
-    });
-  });
-}
-
-
 export default async function handler(req, res) {
   const reqOrigin = req.headers.origin;
-if (allowedOrigins.includes(reqOrigin)) {
-  res.setHeader('Access-Control-Allow-Origin', reqOrigin);
-}
 
- 
+  // Always set CORS headers
+  if (allowedOrigins.includes(reqOrigin)) {
+    res.setHeader('Access-Control-Allow-Origin', reqOrigin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  // Preflight request → end early
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  // Parse JSON manually if needed
   if (
     (req.method === 'POST' || req.method === 'PUT') &&
-    req.headers['content-type'] &&
-    req.headers['content-type'].includes('application/json') &&
+    req.headers['content-type']?.includes('application/json') &&
     typeof req.body === 'undefined'
   ) {
     try {
       const buffers = [];
-      for await (const chunk of req) {
-        buffers.push(chunk);
-      }
+      for await (const chunk of req) buffers.push(chunk);
       req.body = JSON.parse(Buffer.concat(buffers).toString());
     } catch (e) {
       return res.status(400).json({ error: 'Invalid JSON' });
     }
   }
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
   try {
-    await runCors(req, res);
-
     const { method, url } = req;
     const urlPath = new URL(url, `http://${req.headers.host}`).pathname;
 
-  
+    // Root route
     if (method === 'GET' && urlPath === '/') {
       return res.status(200).json({
         message: '🍳 Welcome to Recipe API',
@@ -150,6 +109,7 @@ if (allowedOrigins.includes(reqOrigin)) {
       });
     }
 
+    // Health check
     if (method === 'GET' && urlPath === '/api/health') {
       return res.status(200).json({
         status: 'OK',
@@ -160,19 +120,16 @@ if (allowedOrigins.includes(reqOrigin)) {
 
     await connectToDatabase();
 
+    // Auth: Register
     if (method === 'POST' && urlPath === '/api/auth/register') {
       const { username, password } = req.body;
-
       if (!username || !password) {
         return res.status(400).json({ error: 'Username and password are required' });
       }
-
       if (password.length < 6) {
         return res.status(400).json({ error: 'Password must be at least 6 characters' });
       }
-
-      const existingUser = await User.findOne({ username });
-      if (existingUser) {
+      if (await User.findOne({ username })) {
         return res.status(400).json({ error: 'Username already exists' });
       }
 
@@ -186,9 +143,9 @@ if (allowedOrigins.includes(reqOrigin)) {
       });
     }
 
+    // Auth: Login
     if (method === 'POST' && urlPath === '/api/auth/login') {
       const { username, password } = req.body;
-
       if (!username || !password) {
         return res.status(400).json({ error: 'Username and password are required' });
       }
@@ -211,9 +168,10 @@ if (allowedOrigins.includes(reqOrigin)) {
       });
     }
 
+    // Recipes: Get paginated
     if (method === 'GET' && urlPath === '/api/recipes') {
-      const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 10;
+      const page = parseInt(req.query?.page) || 1;
+      const limit = parseInt(req.query?.limit) || 10;
       const skip = (page - 1) * limit;
 
       const total = await Recipe.countDocuments();
@@ -234,6 +192,7 @@ if (allowedOrigins.includes(reqOrigin)) {
       });
     }
 
+    // Recipes: Create
     if (method === 'POST' && urlPath === '/api/recipes') {
       const user = authenticateToken(req);
       const { title, ingredients, instructions, cookingTime, servings } = req.body;
@@ -259,90 +218,58 @@ if (allowedOrigins.includes(reqOrigin)) {
       });
     }
 
+    // Recipes: Get one
     if (method === 'GET' && urlPath.startsWith('/api/recipes/')) {
       const id = urlPath.split('/')[3];
-      
       if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ error: 'Invalid recipe ID' });
       }
-
       const recipe = await Recipe.findById(id).populate('createdBy', 'username');
       if (!recipe) {
         return res.status(404).json({ error: 'Recipe not found' });
       }
-
       return res.status(200).json(recipe);
     }
 
+    // Recipes: Update
     if (method === 'PUT' && urlPath.startsWith('/api/recipes/')) {
       const user = authenticateToken(req);
       const id = urlPath.split('/')[3];
-
       if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ error: 'Invalid recipe ID' });
       }
-
       const recipe = await Recipe.findById(id);
-      if (!recipe) {
-        return res.status(404).json({ error: 'Recipe not found' });
-      }
-
+      if (!recipe) return res.status(404).json({ error: 'Recipe not found' });
       if (recipe.createdBy.toString() !== user.userId) {
         return res.status(403).json({ error: 'Not authorized' });
       }
-
       const updatedRecipe = await Recipe.findByIdAndUpdate(id, req.body, { new: true });
-      
-      return res.status(200).json({
-        message: 'Recipe updated successfully',
-        recipe: updatedRecipe
-      });
+      return res.status(200).json({ message: 'Recipe updated successfully', recipe: updatedRecipe });
     }
 
+    // Recipes: Delete
     if (method === 'DELETE' && urlPath.startsWith('/api/recipes/')) {
       const user = authenticateToken(req);
       const id = urlPath.split('/')[3];
-
       if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ error: 'Invalid recipe ID' });
       }
-
       const recipe = await Recipe.findById(id);
-      if (!recipe) {
-        return res.status(404).json({ error: 'Recipe not found' });
-      }
-
+      if (!recipe) return res.status(404).json({ error: 'Recipe not found' });
       if (recipe.createdBy.toString() !== user.userId) {
         return res.status(403).json({ error: 'Not authorized' });
       }
-
       await Recipe.findByIdAndDelete(id);
-      
-      return res.status(200).json({
-        message: 'Recipe deleted successfully'
-      });
+      return res.status(200).json({ message: 'Recipe deleted successfully' });
     }
 
     return res.status(404).json({ error: 'Route not found' });
 
   } catch (error) {
-const reqOrigin = req.headers.origin;
-if (allowedOrigins.includes(reqOrigin)) {
-  res.setHeader('Access-Control-Allow-Origin', reqOrigin);
-}
-res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
     console.error('API Error:', error);
-    
     if (error.message === 'Access token required' || error.message === 'Invalid token') {
       return res.status(401).json({ error: error.message });
     }
-
-    return res.status(500).json({ 
-      error: 'Internal server error',
-      message: error.message 
-    });
+    return res.status(500).json({ error: 'Internal server error', message: error.message });
   }
 }
-
