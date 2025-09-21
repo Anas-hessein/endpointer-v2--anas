@@ -1,4 +1,4 @@
-// api/swagger.json.js - OpenAPI specification
+
 export default function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -13,7 +13,7 @@ export default function handler(req, res) {
     },
     "servers": [
       {
-        "url": "https://endpointers-anas.vercel.app",
+        "url": "https://endpointer-v2-anas.vercel.app",
         "description": "Production server"
       }
     ],
